@@ -41,10 +41,19 @@ Upload a leaf image, and the app will:
 
 3. Install the required dependencies:
    ```bash
-   pip install streamlit transformers pillow torch
+   pip install -r requirements.txt
    ```
 
-   > **Note:** `transformers` requires a backend such as `torch` or `tensorflow` to run the image-classification pipeline. `torch` is recommended.
+   `requirements.txt`:
+   ```
+   streamlit
+   transformers>=4.57
+   torch
+   torchvision
+   pillow
+   ```
+
+   > **Note:** `transformers` requires a backend such as `torch` or `tensorflow` to run the image-classification pipeline. `torchvision` is included to satisfy optional imports used by some of `transformers`' newer image processors — without it, Streamlit's file watcher logs (harmless but noisy) `ModuleNotFoundError` warnings on startup.
 
 ## Usage
 
@@ -73,6 +82,48 @@ Then open the local URL shown in your terminal (usually `http://localhost:8501`)
 - **Show multiple predictions:** Modify the results-handling logic to display the top-N predictions (e.g., `results[:3]`) instead of just the top one.
 - **Improve UI:** Add columns, expanders, or charts (e.g., a bar chart of confidence scores) to make results more visual.
 - **Swap models:** Replace the model string in `load_model()` with another Hugging Face image-classification model suited to your use case.
+
+## Deploying on Streamlit Community Cloud
+
+This app runs fine on [Streamlit Community Cloud](https://streamlit.io/cloud). A few environment quirks to be aware of if you deploy there:
+
+- **Python version:** Streamlit Cloud may provision a very new Python version (e.g. 3.14) that some ML packages don't yet ship prebuilt wheels for. If you hit build errors, go to your app's **Settings → General** in the Streamlit Cloud dashboard and pick an older, more broadly-supported Python version (e.g. 3.11), then reboot. Note: a `runtime.txt` file is **not** used to set this on Community Cloud — the version is set via the dashboard.
+- **Don't pin old exact versions** (e.g. `torch==2.5.1`, `transformers==4.46.3`) unless you also pin a compatible Python version. Older pinned releases often only exist as source distributions for newer Python versions, which can fail to build (e.g. `tokenizers` requiring a Rust toolchain that doesn't yet support very new Python versions). Prefer open-ended, current version ranges (as in `requirements.txt` above) so pip resolves versions with prebuilt wheels.
+- After changing `requirements.txt` or Python version, use **Manage app → ⋮ → Reboot app** so the environment is rebuilt from scratch rather than reusing a cached one.
+
+### Troubleshooting
+
+<details>
+<summary><code>ValueError: Unrecognized image processor in linkanjarad/mobilenet_v2_1.0_224-plant-disease-identification</code></summary>
+
+This happens when an incompatible or bleeding-edge `transformers` build fails to auto-detect the image processor for this (older) model repo. Fix by loading the processor/model classes explicitly instead of relying on `Auto*` detection:
+
+```python
+from transformers import MobileNetV2ImageProcessor, MobileNetV2ForImageClassification, pipeline
+
+@st.cache_resource
+def load_model():
+    processor = MobileNetV2ImageProcessor.from_pretrained(
+        "linkanjarad/mobilenet_v2_1.0_224-plant-disease-identification"
+    )
+    model = MobileNetV2ForImageClassification.from_pretrained(
+        "linkanjarad/mobilenet_v2_1.0_224-plant-disease-identification"
+    )
+    return pipeline("image-classification", model=model, image_processor=processor)
+```
+</details>
+
+<details>
+<summary><code>Failed building wheel for tokenizers</code> / PyO3 / maturin errors</summary>
+
+Caused by pinning an old `transformers`/`tokenizers` version that has no prebuilt wheel for the Python version in use, forcing a from-source Rust build that fails. Remove the exact version pins and let pip resolve current versions (see `requirements.txt` above), or pin an older Python version via the Streamlit Cloud dashboard.
+</details>
+
+<details>
+<summary><code>ModuleNotFoundError: No module named 'torchvision'</code> in the logs on startup</summary>
+
+Harmless — Streamlit's file watcher inspects optional `transformers` model modules that reference `torchvision`, even though this app doesn't use them. Add `torchvision` to `requirements.txt` to silence the warnings; the app runs fine either way.
+</details>
 
 ## Disclaimer
 
