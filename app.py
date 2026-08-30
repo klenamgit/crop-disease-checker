@@ -1,5 +1,5 @@
 import streamlit as st
-from transformers import pipeline
+from transformers import pipeline, AutoImageProcessor
 from PIL import Image
 
 # 1. Setup Page Config
@@ -11,7 +11,16 @@ st.write("Upload a photo of a plant leaf to identify potential diseases.")
 @st.cache_resource
 def load_model():
     # This downloads the model on first run and caches it locally
-    return pipeline("image-classification", model="linkanjarad/mobilenet_v2_1.0_224-plant-disease-identification")
+    processor = AutoImageProcessor.from_pretrained(
+        "linkanjarad/mobilenet_v2_1.0_224-plant-disease-identification",
+        use_fast=True
+    )
+    # Load the pipeline with the processor
+    return pipeline(
+        "image-classification", 
+        model="linkanjarad/mobilenet_v2_1.0_224-plant-disease-identification",
+        image_processor=processor
+    )
 
 classifier = load_model()
 
